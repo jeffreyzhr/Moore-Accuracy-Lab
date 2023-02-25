@@ -1,0 +1,787 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+
+```{r}
+# install.packages("bigrquery")
+# install.packages("bigrquerystorage")
+# Sys.setenv("NOT_CRAN"=TRUE) # To avoid long arrow compile time
+# remotes::install_github("meztez/bigrquerystorage")
+# install.packages("remotes")
+# R_BUILD_TAR=tar
+# 
+# remotes::install_github("meztez/bigrquerystorage")
+# library(bigrquery)
+# library(bigrquerystorage)
+Sys.setenv("NOT_CRAN"=TRUE) # To avoid long arrow compile time
+remotes::install_github("meztez/bigrquerystorage")
+```
+
+```{r}
+# Store the project ID
+projectid = "openalex-bigquery"
+
+sql <- "SELECT * FROM `filtered_author_joined.post-2012-30-carnegie`"
+
+tb <- bq_project_query(projectid, sql)
+
+# Store the data
+post_2012_30 <-bq_table_download(tb)
+```
+
+
+```{r}
+#install.packages("effectsize")
+# install.packages("reghelper")
+# install.packages("QuantPsyc")
+```
+
+```{r}
+library(dplyr)
+library(effectsize)
+library(reghelper)
+library(tidyr)
+library(tidyverse)
+library(QuantPsyc)
+```
+
+###REFORMAT TO ACCOUNT FOR SKIPPED YEARS###
+```{r}
+fha <- post_2012_30
+
+#replace NA values for years with Inf
+lens <- fha[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+lens <- transform(lens, year_0 = as.numeric(year_0), year_1 = as.numeric(year_1), year_2 = as.numeric(year_2), year_3 = as.numeric(year_3), year_4= as.numeric(year_4), year_5 = as.numeric(year_5), year_6 = as.numeric(year_6), year_7 = as.numeric(year_7), year_8 = as.numeric(year_8), year_9 = as.numeric(year_9), year_10 = as.numeric(year_10) )
+count_non_na_func <- function(x) 11 - sum(is.na(x))
+fha$count_non_na <- apply(lens, 1, count_non_na_func)
+lens=do.call(data.frame, lapply
+              (lens, function(value) replace
+               (value, is.na(value),Inf)))
+
+#base_0 == starting year (min of all the years) || base_10 == most recent year
+#ex: base_0 = 2012, base_1 = 2013,..., base_10 = 2022
+fha$base_0 <- apply(lens, 1, min)
+fha$base_1 <- fha$base_0 + 1
+fha$base_2 <- fha$base_1 + 1
+fha$base_3 <- fha$base_2 + 1
+fha$base_4 <- fha$base_3 + 1
+fha$base_5 <- fha$base_4 + 1
+fha$base_6 <- fha$base_5 + 1
+fha$base_7 <- fha$base_6 + 1
+fha$base_8 <- fha$base_7 + 1
+fha$base_9 <- fha$base_8 + 1
+fha$base_10 <- fha$base_9 + 1
+
+
+#base_3_pres = 1 if 4th year data is present
+#base_3_pres = 0 if 4th year data isn't present (eg. if that year was skipped)
+check_base_3_pres <- function(x) {
+  x[c("base_3")] %in% x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  }
+fha$base_3_pres <- +(apply(fha, 1, check_base_3_pres))
+
+```
+
+
+###PERCENTILE RANKING FOR 2012-2021###
+```{r}
+fha_percent <- fha %>%
+  filter(fha$base_0 == 2012)
+
+# calculate percentile rank relative to others in their field for year 4 (1-indexed)
+# if 4th yr data is present, calculate percentile rank using that year's data
+# else, calculate percentile rank using 0
+fha_percent$percent_yr4 <- NA
+phys_ind <- (fha_percent$concept_0 == "Physics")
+fha_percent$percent_yr4[phys_ind] <- ifelse(fha_percent$base_3_pres[phys_ind] == 1, percent_rank(fha_percent$cited_7[phys_ind]), percent_rank(0))
+
+math_ind <- (fha_percent$concept_0 == "Mathematics")
+fha_percent$percent_yr4[math_ind] <- ifelse(fha_percent$base_3_pres[math_ind] == 1, percent_rank(fha_percent$cited_7[math_ind]), percent_rank(0))
+
+chem_ind <- (fha_percent$concept_0 == "Chemistry")
+fha_percent$percent_yr4[chem_ind] <- ifelse(fha_percent$base_3_pres[chem_ind] == 1, percent_rank(fha_percent$cited_7[chem_ind]), percent_rank(0))
+
+bio_ind <- (fha_percent$concept_0 == "Biology")
+fha_percent$percent_yr4[bio_ind] <- ifelse(fha_percent$base_3_pres[bio_ind] == 1, percent_rank(fha_percent$cited_7[bio_ind]), percent_rank(0))
+
+cs_ind <- (fha_percent$concept_0 == "Computer science")
+fha_percent$percent_yr4[cs_ind] <- ifelse(fha_percent$base_3_pres[cs_ind] == 1, percent_rank(fha_percent$cited_7[cs_ind]), percent_rank(0))
+
+psych_ind <- (fha_percent$concept_0 == "Psychology")
+fha_percent$percent_yr4[psych_ind] <- ifelse(fha_percent$base_3_pres[psych_ind] == 1, percent_rank(fha_percent$cited_7[psych_ind]), percent_rank(0))
+
+ms_ind <- (fha_percent$concept_0 == "Materials science")
+fha_percent$percent_yr4[ms_ind] <- ifelse(fha_percent$base_3_pres[ms_ind] == 1, percent_rank(fha_percent$cited_7[ms_ind]), percent_rank(0))
+
+med_ind <- (fha_percent$concept_0 == "Medicine")
+fha_percent$percent_yr4[med_ind] <- ifelse(fha_percent$base_3_pres[med_ind] == 1, percent_rank(fha_percent$cited_7[med_ind]), percent_rank(0))
+
+eng_ind <- (fha_percent$concept_0 == "Engineering")
+fha_percent$percent_yr4[eng_ind] <- ifelse(fha_percent$base_3_pres[eng_ind] == 1, percent_rank(fha_percent$cited_7[eng_ind]), percent_rank(0))
+
+env_ind <- (fha_percent$concept_0 == "Environmental science")
+fha_percent$percent_yr4[env_ind] <- ifelse(fha_percent$base_3_pres[env_ind] == 1, percent_rank(fha_percent$cited_7[env_ind]), percent_rank(0))
+
+geol_ind <- (fha_percent$concept_0 == "Geology")
+fha_percent$percent_yr4[geol_ind] <- ifelse(fha_percent$base_3_pres[geol_ind] == 1, percent_rank(fha_percent$cited_7[geol_ind]), percent_rank(0))
+
+econ_ind <- (fha_percent$concept_0 == "Economics")
+fha_percent$percent_yr4[econ_ind] <- ifelse(fha_percent$base_3_pres[econ_ind] == 1, percent_rank(fha_percent$cited_7[econ_ind]), percent_rank(0))
+
+poli_ind <- (fha_percent$concept_0 == "Political science")
+fha_percent$percent_yr4[poli_ind] <- ifelse(fha_percent$base_3_pres[poli_ind] == 1, percent_rank(fha_percent$cited_7[poli_ind]), percent_rank(0))
+
+geog_ind <- (fha_percent$concept_0 == "Geography")
+fha_percent$percent_yr4[geog_ind] <- ifelse(fha_percent$base_3_pres[geog_ind] == 1, percent_rank(fha_percent$cited_7[geog_ind]), percent_rank(0))
+
+soc_ind <- (fha_percent$concept_0 == "Sociology")
+fha_percent$percent_yr4[soc_ind] <- ifelse(fha_percent$base_3_pres[soc_ind] == 1, percent_rank(fha_percent$cited_7[soc_ind]), percent_rank(0))
+
+bus_ind <- (fha_percent$concept_0 == "Business")
+fha_percent$percent_yr4[bus_ind] <- ifelse(fha_percent$base_3_pres[bus_ind] == 1, percent_rank(fha_percent$cited_7[bus_ind]), percent_rank(0))
+
+phil_ind <- (fha_percent$concept_0 == "Philosophy")
+fha_percent$percent_yr4[phil_ind] <- ifelse(fha_percent$base_3_pres[phil_ind] == 1, percent_rank(fha_percent$cited_7[phil_ind]), percent_rank(0))
+
+history_ind <- (fha_percent$concept_0 == "History")
+fha_percent$percent_yr4[history_ind] <- ifelse(fha_percent$base_3_pres[history_ind] == 1, percent_rank(fha_percent$cited_7[history_ind]), percent_rank(0))
+
+art_ind <- (fha_percent$concept_0 == "Art")
+fha_percent$percent_yr4[art_ind] <- ifelse(fha_percent$base_3_pres[art_ind] == 1, percent_rank(fha_percent$cited_7[art_ind]), percent_rank(0))
+```
+
+
+```{r}
+# calculate percentile ranking relative to others in their field year 10
+# if 10th yr data is present, calculate percentile rank using that year's data
+# else, calculate percentile rank using 0
+fha_percent$percent_yr10 <- NA
+fha_percent$percent_yr10[phys_ind] <- ifelse(fha_percent$year_1[phys_ind] == 2021, percent_rank(fha_percent$cited_1[phys_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[math_ind] <- ifelse(fha_percent$year_1[math_ind] == 2021, percent_rank(fha_percent$cited_1[math_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[chem_ind] <- ifelse(fha_percent$year_1[chem_ind] == 2021, percent_rank(fha_percent$cited_1[chem_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[bio_ind] <- ifelse(fha_percent$year_1[bio_ind] == 2021, percent_rank(fha_percent$cited_1[bio_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[cs_ind] <- ifelse(fha_percent$year_1[cs_ind] == 2021, percent_rank(fha_percent$cited_1[cs_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[psych_ind] <- ifelse(fha_percent$year_1[psych_ind] == 2021, percent_rank(fha_percent$cited_1[psych_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[ms_ind] <- ifelse(fha_percent$year_1[ms_ind] == 2021, percent_rank(fha_percent$cited_1[ms_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[med_ind] <- ifelse(fha_percent$year_1[med_ind] == 2021, percent_rank(fha_percent$cited_1[med_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[eng_ind] <- ifelse(fha_percent$year_1[eng_ind] == 2021, percent_rank(fha_percent$cited_1[eng_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[env_ind] <- ifelse(fha_percent$year_1[env_ind] == 2021, percent_rank(fha_percent$cited_1[env_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[geol_ind] <- ifelse(fha_percent$year_1[geol_ind] == 2021, percent_rank(fha_percent$cited_1[geol_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[econ_ind] <- ifelse(fha_percent$year_1[econ_ind] == 2021, percent_rank(fha_percent$cited_1[econ_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[poli_ind] <- ifelse(fha_percent$year_1[poli_ind] == 2021, percent_rank(fha_percent$cited_1[poli_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[geog_ind] <- ifelse(fha_percent$year_1[geog_ind] == 2021, percent_rank(fha_percent$cited_1[geog_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[soc_ind] <- ifelse(fha_percent$year_1[soc_ind] == 2021, percent_rank(fha_percent$cited_1[soc_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[bus_ind] <- ifelse(fha_percent$year_1[bus_ind] == 2021, percent_rank(fha_percent$cited_1[bus_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[phil_ind] <- ifelse(fha_percent$year_1[phil_ind] == 2021, percent_rank(fha_percent$cited_1[phil_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[history_ind] <- ifelse(fha_percent$year_1[history_ind] == 2021, percent_rank(fha_percent$cited_1[history_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[art_ind] <- ifelse(fha_percent$year_1[art_ind] == 2021, percent_rank(fha_percent$cited_1[art_ind]), percent_rank(0))
+```
+
+```{r}
+cor.test(fha_percent$percent_yr4,fha_percent$percent_yr10)
+plot(fha_percent[,c(34,35)])
+```
+
+
+
+```{r}
+## aggregated percentile ranking
+get_cites_10 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2012", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_9 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2013", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_8 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2014", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_7 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2015", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_6 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2016", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_5 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2017", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_4 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2018", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_3 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2019", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_2 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2020", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_1 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2021", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+
+
+cite_10 <- (apply(fha_percent, 1, get_cites_10))
+cite_9 <- (apply(fha_percent, 1, get_cites_9))
+cite_8 <- (apply(fha_percent, 1, get_cites_8))
+cite_7 <- (apply(fha_percent, 1, get_cites_7))
+cite_6 <- (apply(fha_percent, 1, get_cites_6))
+cite_5 <- (apply(fha_percent, 1, get_cites_5))
+cite_4 <- (apply(fha_percent, 1, get_cites_4))
+cite_3 <- (apply(fha_percent, 1, get_cites_3))
+cite_2 <- (apply(fha_percent, 1, get_cites_2))
+cite_1 <- (apply(fha_percent, 1, get_cites_1))
+
+
+fha_percent$yr4_sum <- cite_10 + cite_9 + cite_8 + cite_7
+
+fha_percent$yr10_sum <- cite_6 + cite_5 + cite_4 + cite_3 + cite_2 + cite_1
+
+fha_percent$percent_yr4_sum <- NA
+fha_percent$percent_yr4_sum[phys_ind] <- percent_rank(fha_percent$yr4_sum[phys_ind])
+fha_percent$percent_yr4_sum[math_ind] <- percent_rank(fha_percent$yr4_sum[math_ind])
+fha_percent$percent_yr4_sum[chem_ind] <- percent_rank(fha_percent$yr4_sum[chem_ind])
+fha_percent$percent_yr4_sum[bio_ind] <- percent_rank(fha_percent$yr4_sum[bio_ind])
+fha_percent$percent_yr4_sum[cs_ind] <- percent_rank(fha_percent$yr4_sum[cs_ind])
+fha_percent$percent_yr4_sum[psych_ind] <- percent_rank(fha_percent$yr4_sum[psych_ind])
+fha_percent$percent_yr4_sum[ms_ind] <- percent_rank(fha_percent$yr4_sum[ms_ind])
+fha_percent$percent_yr4_sum[med_ind] <- percent_rank(fha_percent$yr4_sum[med_ind])
+fha_percent$percent_yr4_sum[eng_ind] <- percent_rank(fha_percent$yr4_sum[eng_ind])
+fha_percent$percent_yr4_sum[env_ind] <- percent_rank(fha_percent$yr4_sum[env_ind])
+fha_percent$percent_yr4_sum[geol_ind] <- percent_rank(fha_percent$yr4_sum[geol_ind])
+fha_percent$percent_yr4_sum[econ_ind] <- percent_rank(fha_percent$yr4_sum[econ_ind])
+fha_percent$percent_yr4_sum[poli_ind] <- percent_rank(fha_percent$yr4_sum[poli_ind])
+fha_percent$percent_yr4_sum[geog_ind] <- percent_rank(fha_percent$yr4_sum[geog_ind])
+fha_percent$percent_yr4_sum[soc_ind] <- percent_rank(fha_percent$yr4_sum[soc_ind])
+fha_percent$percent_yr4_sum[bus_ind] <- percent_rank(fha_percent$yr4_sum[bus_ind])
+fha_percent$percent_yr4_sum[phil_ind] <- percent_rank(fha_percent$yr4_sum[phil_ind])
+fha_percent$percent_yr4_sum[history_ind] <- percent_rank(fha_percent$yr4_sum[history_ind])
+fha_percent$percent_yr4_sum[art_ind] <- percent_rank(fha_percent$yr4_sum[art_ind])
+
+fha_percent$percent_yr10_sum <- NA
+fha_percent$percent_yr10_sum[phys_ind] <- percent_rank(fha_percent$yr10_sum[phys_ind])
+fha_percent$percent_yr10_sum[math_ind] <- percent_rank(fha_percent$yr10_sum[math_ind])
+fha_percent$percent_yr10_sum[chem_ind] <- percent_rank(fha_percent$yr10_sum[chem_ind])
+fha_percent$percent_yr10_sum[bio_ind] <- percent_rank(fha_percent$yr10_sum[bio_ind])
+fha_percent$percent_yr10_sum[cs_ind] <- percent_rank(fha_percent$yr10_sum[cs_ind])
+fha_percent$percent_yr10_sum[psych_ind] <- percent_rank(fha_percent$yr10_sum[psych_ind])
+fha_percent$percent_yr10_sum[ms_ind] <- percent_rank(fha_percent$yr10_sum[ms_ind])
+fha_percent$percent_yr10_sum[med_ind] <- percent_rank(fha_percent$yr10_sum[med_ind])
+fha_percent$percent_yr10_sum[eng_ind] <- percent_rank(fha_percent$yr10_sum[eng_ind])
+fha_percent$percent_yr10_sum[env_ind] <- percent_rank(fha_percent$yr10_sum[env_ind])
+fha_percent$percent_yr10_sum[geol_ind] <- percent_rank(fha_percent$yr10_sum[geol_ind])
+fha_percent$percent_yr10_sum[econ_ind] <- percent_rank(fha_percent$yr10_sum[econ_ind])
+fha_percent$percent_yr10_sum[poli_ind] <- percent_rank(fha_percent$yr10_sum[poli_ind])
+fha_percent$percent_yr10_sum[geog_ind] <- percent_rank(fha_percent$yr10_sum[geog_ind])
+fha_percent$percent_yr10_sum[soc_ind] <- percent_rank(fha_percent$yr10_sum[soc_ind])
+fha_percent$percent_yr10_sum[bus_ind] <- percent_rank(fha_percent$yr10_sum[bus_ind])
+fha_percent$percent_yr10_sum[phil_ind] <- percent_rank(fha_percent$yr10_sum[phil_ind])
+fha_percent$percent_yr10_sum[history_ind] <- percent_rank(fha_percent$yr10_sum[history_ind])
+fha_percent$percent_yr10_sum[art_ind] <- percent_rank(fha_percent$yr10_sum[art_ind])
+```
+
+
+```{r}
+cor.test(fha_percent$percent_yr4_sum,fha_percent$percent_yr10_sum)
+plot(fha_percent[,c(28,29)])
+
+cor.test(fha_percent$percent_yr4,fha_percent$percent_yr10)
+plot(fha_percent[,c(28,29)])
+```
+###PERCENTILE RANKING FOR 2013-2022###
+```{r}
+fha_percent <- fha %>%
+  filter(fha$base_0 == 2013)
+
+# calculate percentile rank relative to others in their field for year 4 (1-indexed)
+fha_percent$percent_yr4 <- NA
+phys_ind <- (fha_percent$concept_0 == "Physics")
+fha_percent$percent_yr4[phys_ind] <- ifelse(fha_percent$base_3_pres[phys_ind] == 1, percent_rank(fha_percent$cited_6[phys_ind]), percent_rank(0))
+
+math_ind <- (fha_percent$concept_0 == "Mathematics")
+fha_percent$percent_yr4[math_ind] <- ifelse(fha_percent$base_3_pres[math_ind] == 1, percent_rank(fha_percent$cited_6[math_ind]), percent_rank(0))
+
+chem_ind <- (fha_percent$concept_0 == "Chemistry")
+fha_percent$percent_yr4[chem_ind] <- ifelse(fha_percent$base_3_pres[chem_ind] == 1, percent_rank(fha_percent$cited_6[chem_ind]), percent_rank(0))
+
+bio_ind <- (fha_percent$concept_0 == "Biology")
+fha_percent$percent_yr4[bio_ind] <- ifelse(fha_percent$base_3_pres[bio_ind] == 1, percent_rank(fha_percent$cited_6[bio_ind]), percent_rank(0))
+
+cs_ind <- (fha_percent$concept_0 == "Computer science")
+fha_percent$percent_yr4[cs_ind] <- ifelse(fha_percent$base_3_pres[cs_ind] == 1, percent_rank(fha_percent$cited_6[cs_ind]), percent_rank(0))
+
+psych_ind <- (fha_percent$concept_0 == "Psychology")
+fha_percent$percent_yr4[psych_ind] <- ifelse(fha_percent$base_3_pres[psych_ind] == 1, percent_rank(fha_percent$cited_6[psych_ind]), percent_rank(0))
+
+ms_ind <- (fha_percent$concept_0 == "Materials science")
+fha_percent$percent_yr4[ms_ind] <- ifelse(fha_percent$base_3_pres[ms_ind] == 1, percent_rank(fha_percent$cited_6[ms_ind]), percent_rank(0))
+
+med_ind <- (fha_percent$concept_0 == "Medicine")
+fha_percent$percent_yr4[med_ind] <- ifelse(fha_percent$base_3_pres[med_ind] == 1, percent_rank(fha_percent$cited_6[med_ind]), percent_rank(0))
+
+eng_ind <- (fha_percent$concept_0 == "Engineering")
+fha_percent$percent_yr4[eng_ind] <- ifelse(fha_percent$base_3_pres[eng_ind] == 1, percent_rank(fha_percent$cited_6[eng_ind]), percent_rank(0))
+
+env_ind <- (fha_percent$concept_0 == "Environmental science")
+fha_percent$percent_yr4[env_ind] <- ifelse(fha_percent$base_3_pres[env_ind] == 1, percent_rank(fha_percent$cited_6[env_ind]), percent_rank(0))
+
+geol_ind <- (fha_percent$concept_0 == "Geology")
+fha_percent$percent_yr4[geol_ind] <- ifelse(fha_percent$base_3_pres[geol_ind] == 1, percent_rank(fha_percent$cited_6[geol_ind]), percent_rank(0))
+
+econ_ind <- (fha_percent$concept_0 == "Economics")
+fha_percent$percent_yr4[econ_ind] <- ifelse(fha_percent$base_3_pres[econ_ind] == 1, percent_rank(fha_percent$cited_6[econ_ind]), percent_rank(0))
+
+poli_ind <- (fha_percent$concept_0 == "Political science")
+fha_percent$percent_yr4[poli_ind] <- ifelse(fha_percent$base_3_pres[poli_ind] == 1, percent_rank(fha_percent$cited_6[poli_ind]), percent_rank(0))
+
+geog_ind <- (fha_percent$concept_0 == "Geography")
+fha_percent$percent_yr4[geog_ind] <- ifelse(fha_percent$base_3_pres[geog_ind] == 1, percent_rank(fha_percent$cited_6[geog_ind]), percent_rank(0))
+
+soc_ind <- (fha_percent$concept_0 == "Sociology")
+fha_percent$percent_yr4[soc_ind] <- ifelse(fha_percent$base_3_pres[soc_ind] == 1, percent_rank(fha_percent$cited_6[soc_ind]), percent_rank(0))
+
+bus_ind <- (fha_percent$concept_0 == "Business")
+fha_percent$percent_yr4[bus_ind] <- ifelse(fha_percent$base_3_pres[bus_ind] == 1, percent_rank(fha_percent$cited_6[bus_ind]), percent_rank(0))
+
+phil_ind <- (fha_percent$concept_0 == "Philosophy")
+fha_percent$percent_yr4[phil_ind] <- ifelse(fha_percent$base_3_pres[phil_ind] == 1, percent_rank(fha_percent$cited_6[phil_ind]), percent_rank(0))
+
+history_ind <- (fha_percent$concept_0 == "History")
+fha_percent$percent_yr4[history_ind] <- ifelse(fha_percent$base_3_pres[history_ind] == 1, percent_rank(fha_percent$cited_6[history_ind]), percent_rank(0))
+
+art_ind <- (fha_percent$concept_0 == "Art")
+fha_percent$percent_yr4[art_ind] <- ifelse(fha_percent$base_3_pres[art_ind] == 1, percent_rank(fha_percent$cited_6[art_ind]), percent_rank(0))
+```
+
+```{r}
+# calculate percentile ranking relative to others in their field year 10
+fha_percent$percent_yr10 <- NA
+fha_percent$percent_yr10[phys_ind] <- ifelse(fha_percent$year_0[phys_ind] == 2022, percent_rank(fha_percent$cited_0[phys_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[math_ind] <- ifelse(fha_percent$year_0[math_ind] == 2022, percent_rank(fha_percent$cited_0[math_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[chem_ind] <- ifelse(fha_percent$year_0[chem_ind] == 2022, percent_rank(fha_percent$cited_0[chem_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[bio_ind] <- ifelse(fha_percent$year_0[bio_ind] == 2022, percent_rank(fha_percent$cited_0[bio_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[cs_ind] <- ifelse(fha_percent$year_0[cs_ind] == 2022, percent_rank(fha_percent$cited_0[cs_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[psych_ind] <- ifelse(fha_percent$year_0[psych_ind] == 2022, percent_rank(fha_percent$cited_0[psych_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[ms_ind] <- ifelse(fha_percent$year_0[ms_ind] == 2022, percent_rank(fha_percent$cited_0[ms_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[med_ind] <- ifelse(fha_percent$year_0[med_ind] == 2022, percent_rank(fha_percent$cited_0[med_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[eng_ind] <- ifelse(fha_percent$year_0[eng_ind] == 2022, percent_rank(fha_percent$cited_0[eng_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[env_ind] <- ifelse(fha_percent$year_0[env_ind] == 2022, percent_rank(fha_percent$cited_0[env_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[geol_ind] <- ifelse(fha_percent$year_0[geol_ind] == 2022, percent_rank(fha_percent$cited_0[geol_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[econ_ind] <- ifelse(fha_percent$year_0[econ_ind] == 2022, percent_rank(fha_percent$cited_0[econ_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[poli_ind] <- ifelse(fha_percent$year_0[poli_ind] == 2022, percent_rank(fha_percent$cited_0[poli_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[geog_ind] <- ifelse(fha_percent$year_0[geog_ind] == 2022, percent_rank(fha_percent$cited_0[geog_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[soc_ind] <- ifelse(fha_percent$year_0[soc_ind] == 2022, percent_rank(fha_percent$cited_0[soc_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[bus_ind] <- ifelse(fha_percent$year_0[bus_ind] == 2022, percent_rank(fha_percent$cited_0[bus_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[phil_ind] <- ifelse(fha_percent$year_0[phil_ind] == 2022, percent_rank(fha_percent$cited_0[phil_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[history_ind] <- ifelse(fha_percent$year_0[history_ind] == 2022, percent_rank(fha_percent$cited_0[history_ind]), percent_rank(0))
+
+fha_percent$percent_yr10[art_ind] <- ifelse(fha_percent$year_0[art_ind] == 2022, percent_rank(fha_percent$cited_0[art_ind]), percent_rank(0))
+```
+
+```{r}
+cor.test(fha_percent$percent_yr4,fha_percent$percent_yr10)
+plot(fha_percent[,c(34,35)])
+```
+
+```{r}
+## aggregated percentile ranking
+get_cites_9 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2013", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_8 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2014", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_7 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2015", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_6 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2016", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_5 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2017", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_4 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2018", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_3 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2019", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_2 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2020", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_1 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2021", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+get_cites_0 <- function(x) {
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  yr_ind <- match("2022", years)
+  if (is.na(yr_ind)) {
+    return(0)
+  }
+  else {
+    return(as.numeric(cites[[yr_ind]]))
+  }
+}
+
+
+cite_9 <- (apply(fha_percent, 1, get_cites_9))
+cite_8 <- (apply(fha_percent, 1, get_cites_8))
+cite_7 <- (apply(fha_percent, 1, get_cites_7))
+cite_6 <- (apply(fha_percent, 1, get_cites_6))
+cite_5 <- (apply(fha_percent, 1, get_cites_5))
+cite_4 <- (apply(fha_percent, 1, get_cites_4))
+cite_3 <- (apply(fha_percent, 1, get_cites_3))
+cite_2 <- (apply(fha_percent, 1, get_cites_2))
+cite_1 <- (apply(fha_percent, 1, get_cites_1))
+cite_0 <- (apply(fha_percent, 1, get_cites_0))
+
+
+fha_percent$yr4_sum <- cite_10 + cite_9 + cite_8 + cite_7
+
+fha_percent$yr10_sum <- cite_6 + cite_5 + cite_4 + cite_3 + cite_2 + cite_1
+
+fha_percent$percent_yr4_sum <- NA
+fha_percent$percent_yr4_sum[phys_ind] <- percent_rank(fha_percent$yr4_sum[phys_ind])
+fha_percent$percent_yr4_sum[math_ind] <- percent_rank(fha_percent$yr4_sum[math_ind])
+fha_percent$percent_yr4_sum[chem_ind] <- percent_rank(fha_percent$yr4_sum[chem_ind])
+fha_percent$percent_yr4_sum[bio_ind] <- percent_rank(fha_percent$yr4_sum[bio_ind])
+fha_percent$percent_yr4_sum[cs_ind] <- percent_rank(fha_percent$yr4_sum[cs_ind])
+fha_percent$percent_yr4_sum[psych_ind] <- percent_rank(fha_percent$yr4_sum[psych_ind])
+fha_percent$percent_yr4_sum[ms_ind] <- percent_rank(fha_percent$yr4_sum[ms_ind])
+fha_percent$percent_yr4_sum[med_ind] <- percent_rank(fha_percent$yr4_sum[med_ind])
+fha_percent$percent_yr4_sum[eng_ind] <- percent_rank(fha_percent$yr4_sum[eng_ind])
+fha_percent$percent_yr4_sum[env_ind] <- percent_rank(fha_percent$yr4_sum[env_ind])
+fha_percent$percent_yr4_sum[geol_ind] <- percent_rank(fha_percent$yr4_sum[geol_ind])
+fha_percent$percent_yr4_sum[econ_ind] <- percent_rank(fha_percent$yr4_sum[econ_ind])
+fha_percent$percent_yr4_sum[poli_ind] <- percent_rank(fha_percent$yr4_sum[poli_ind])
+fha_percent$percent_yr4_sum[geog_ind] <- percent_rank(fha_percent$yr4_sum[geog_ind])
+fha_percent$percent_yr4_sum[soc_ind] <- percent_rank(fha_percent$yr4_sum[soc_ind])
+fha_percent$percent_yr4_sum[bus_ind] <- percent_rank(fha_percent$yr4_sum[bus_ind])
+fha_percent$percent_yr4_sum[phil_ind] <- percent_rank(fha_percent$yr4_sum[phil_ind])
+fha_percent$percent_yr4_sum[history_ind] <- percent_rank(fha_percent$yr4_sum[history_ind])
+fha_percent$percent_yr4_sum[art_ind] <- percent_rank(fha_percent$yr4_sum[art_ind])
+
+fha_percent$percent_yr10_sum <- NA
+fha_percent$percent_yr10_sum[phys_ind] <- percent_rank(fha_percent$yr10_sum[phys_ind])
+fha_percent$percent_yr10_sum[math_ind] <- percent_rank(fha_percent$yr10_sum[math_ind])
+fha_percent$percent_yr10_sum[chem_ind] <- percent_rank(fha_percent$yr10_sum[chem_ind])
+fha_percent$percent_yr10_sum[bio_ind] <- percent_rank(fha_percent$yr10_sum[bio_ind])
+fha_percent$percent_yr10_sum[cs_ind] <- percent_rank(fha_percent$yr10_sum[cs_ind])
+fha_percent$percent_yr10_sum[psych_ind] <- percent_rank(fha_percent$yr10_sum[psych_ind])
+fha_percent$percent_yr10_sum[ms_ind] <- percent_rank(fha_percent$yr10_sum[ms_ind])
+fha_percent$percent_yr10_sum[med_ind] <- percent_rank(fha_percent$yr10_sum[med_ind])
+fha_percent$percent_yr10_sum[eng_ind] <- percent_rank(fha_percent$yr10_sum[eng_ind])
+fha_percent$percent_yr10_sum[env_ind] <- percent_rank(fha_percent$yr10_sum[env_ind])
+fha_percent$percent_yr10_sum[geol_ind] <- percent_rank(fha_percent$yr10_sum[geol_ind])
+fha_percent$percent_yr10_sum[econ_ind] <- percent_rank(fha_percent$yr10_sum[econ_ind])
+fha_percent$percent_yr10_sum[poli_ind] <- percent_rank(fha_percent$yr10_sum[poli_ind])
+fha_percent$percent_yr10_sum[geog_ind] <- percent_rank(fha_percent$yr10_sum[geog_ind])
+fha_percent$percent_yr10_sum[soc_ind] <- percent_rank(fha_percent$yr10_sum[soc_ind])
+fha_percent$percent_yr10_sum[bus_ind] <- percent_rank(fha_percent$yr10_sum[bus_ind])
+fha_percent$percent_yr10_sum[phil_ind] <- percent_rank(fha_percent$yr10_sum[phil_ind])
+fha_percent$percent_yr10_sum[history_ind] <- percent_rank(fha_percent$yr10_sum[history_ind])
+fha_percent$percent_yr10_sum[art_ind] <- percent_rank(fha_percent$yr10_sum[art_ind])
+```
+
+
+```{r}
+cor.test(fha_percent$percent_yr4_sum,fha_percent$percent_yr10_sum)
+plot(fha_percent[,c(28,29)])
+
+cor.test(fha_percent$percent_yr4,fha_percent$percent_yr10)
+plot(fha_percent[,c(28,29)])
+```
+
+######################Lagged Regression stuff########################
+
+```{r}
+#year_0 = most recent year
+temp <- fha
+# convert data to long form
+keycol <- "year"
+valuecol <- "cites_per_yr"
+gathercols <- c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")
+lf_fha <- gather_(temp, keycol, valuecol, gathercols)
+temp <-lf_fha
+```
+
+```{r}
+get_cites <- function(lf_x) {
+  #lf_x = row from long-form data
+  #x = row from fha table (with year_0 | cited_0 | year_1 | cited_1 ...)
+  id <- lf_x[[c("id")]]
+  x <-fha[fha$id == id,]
+  years <- x[c("year_0", "year_1", "year_2", "year_3", "year_4", "year_5", "year_6", "year_7", "year_8", "year_9", "year_10")]
+  cites <- x[c("cited_0", "cited_1", "cited_2", "cited_3", "cited_4", "cited_5", "cited_6", "cited_7", "cited_8", "cited_9", "cited_10")]
+  num_yrs <- lf_x[["count_non_na"]]
+  start_yr <- lf_x[["base_0"]]
+  check_yr <- lf_x[["year"]]
+  if (!is.na(check_yr)) {
+    check_yr <- as.numeric(substr(check_yr, 6, 6))
+    acc_yr <- as.numeric(start_yr) + as.numeric(check_yr)
+    acc_yr_ind <- match(acc_yr, years)
+    if (is.na(acc_yr_ind)) {
+      return(0)
+    }
+    else {
+      return(cites[[acc_yr_ind]])
+    }
+  }
+  return(NA)
+}
+
+
+lf_fha$cites_per_yr <- (apply(lf_fha, 1, get_cites))
+```
+
+
+```{r}
+# change names of values in the year column
+yr0 <- (lf_fha$year == "year_0")
+lf_fha$year[yr0] <- 0
+yr1 <- (lf_fha$year == "year_1")
+lf_fha$year[yr1] <- 1
+yr2 <- (lf_fha$year == "year_2")
+lf_fha$year[yr2] <- 2
+yr3 <- (lf_fha$year == "year_3")
+lf_fha$year[yr3] <- 3
+yr4 <- (lf_fha$year == "year_4")
+lf_fha$year[yr4] <- 4
+yr5 <- (lf_fha$year == "year_5")
+lf_fha$year[yr5] <- 5
+yr6 <- (lf_fha$year == "year_6")
+lf_fha$year[yr6] <- 6
+yr7 <- (lf_fha$year == "year_7")
+lf_fha$year[yr7] <- 7
+yr8 <- (lf_fha$year == "year_8")
+lf_fha$year[yr8] <- 8
+yr9 <- (lf_fha$year == "year_9")
+lf_fha$year[yr9] <- 9
+yr10 <- (lf_fha$year == "year_10")
+lf_fha$year[yr10] <- 10
+```
+
+
+```{r}
+# lag cites_per_yr by 1 
+laggy <- lf_fha %>% 
+  group_by(name) %>%
+  mutate(cites_lagged = lag(cites_per_yr))
+View(laggy)
+
+laggy$year <- as.character(laggy$year)
+
+```
+
+
+```{r}
+# log transformation
+
+laggy$log_cites_yr <- log(laggy$cites_per_yr+1)
+laggy$log_cites_lagged <- log(laggy$cites_lagged+1)
+
+# run regression and find standardized beta
+lm1 <-lm(laggy$cites_per_yr ~ laggy$cites_lagged + laggy$concept_0)
+lm2 <- lm(log_cites_yr ~ log_cites_lagged + concept_0, laggy)
+
+QuantPsyc::lm.beta(lm2)
+effectsize::standardize_parameters(lm2, method = "basic")
+reghelper::beta(lm2) 
+```

@@ -1,0 +1,12 @@
+{
+  "type": "service_account",
+  "project_id": "openalex-bigquery",
+  "private_key_id": "568dde83855a4de45b33793c98322c272379e1eb",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQD3O2XQ9jT70s3I\niNX3YSY+jkRWrNy1jZD2HDyfk62wfT52QrRtMoceLJI+NjPU7t1d0I5FJcWOSalh\nJQlCznFqe4x6BCA09+W3pYKGvumwVR0I6Xi4r+H3UVegoik84U14cUr9Xxr5tdzF\ns2CErIRCpCYpfdEcOwyP0KhSIEn+aOkuhgCyhKndXcsh62WmxTflH8lbKuIgvhWN\nvGk6H8ipAZWtSj72duoC95QaZT3fduZAcHFO9jW4rL8jmDH3lfGxkuOpiUEYqz0q\n0t0J1nyNysD2liJigWnDP4FE2y9Yvsy38hxg2PPN0yhFIsweScM+5ADBtrSuOCdK\nWtxSQiBhAgMBAAECggEAF5aVCssK2BdPUfmYQeTaKMVwc2fvxj9ZBto/1dEvFQkw\nu0jMUnor1m8AjwCjO7GEm7hTx/jSxgDKMSi+9EmicZCTIRXMBYcSEE5cIJi4ztL4\nFQsYMmAkP5wFBSBOWJl9x5GLoEFW319WI+NkQJRTKXvkNjjjtCgAH/0+VK5G+7JS\nbEnTZ7AOV14HX3cPmwPbZ4YO7rWXbH1UlbNiOpZa4Rt89ZcF+X+SG3mtWLrR6KiM\nDYGgDe/iIOP2llIE4U4JpafCnc/AXO1k9mYiET9RoRW4PjqacV9IGYNXD077XK8x\nkXwLIa7Z3t+QyYGsZhvznC0Zgai447zJPyAj1nzeFwKBgQD+Bh3SeFt7k8QRXt3W\nd1uDbL2GxMOiUtnX8uk4JkmWUekwRg6pMI/qFqxXReN1tYtVila4GVQOQ/WzE1IB\nGVyp5W66goZhA+aymkDgH+5cMilqQs+3Y5eDK/cZFAoinOG1rmpMS617fO+3CI4e\nPd2LdNdDlVcPlxIFyBsqHQX2wwKBgQD5J8Fe0vn0I+DWgMj+P9h5rufcU0dib/mi\n5kLHzfk5MU/Qfvx/m/S7MbEPN+RucsN9FaTJEJ/5h2TrZPNL9wDmNKJpvAzg28fF\n+O7S9CBUlSp8ZBT/fcnwtj5tjgShBFWjd0T8HN4U5qXk2jF7YmCBq2/8t65fj1NK\nOommyXECCwKBgQC51yu2MQtsqzxEIQ1Wu9ednM5DbGxbsxVgoXvx8kDf0mkxQe+z\n461F6vSGnMC9+uVG3YB4Cz+teBamvjm+SBm8yfdqR9eb3kjG3Ycc8P9nP+OAtARW\n/Gt6MY4DMOABVpjiXAm0a6EtuMd/NqkSgtw0DHT4Iqeg5jrvM+h7tOQKFQKBgQDl\n/ZyyO24fvz68wwTGLYlWSe4do4Ixi8uUY5khdzCnaq2SeKX75apzYdtfgOiMS8PI\no0IJmB8T57dw0y8C4G8kEVIa6Eu7BSXTyYYrlM6DRW6ChKAdd7ABUzktR/td5vJm\ngqJbVwppoL9iEUe77YPILsihL6z26Qapbn/CRhDbIQKBgASIIo60CgTiD/JMFy+V\nMxsqysZtjfg5EraDAdQvKJiFK1CmNKrr9tFQFBaYSxvlTRbDwoE06Qmn6eel8HE3\nf4WMfHnfg4s9GYUlhzs7jA1bw6nshFE5S+PRva83qIwCgLzQF4By2vsBUrpSOxKs\nVL6mtAVxkObQUlkAXGOYl+Vq\n-----END PRIVATE KEY-----\n",
+  "client_email": "jeffreyzhou@openalex-bigquery.iam.gserviceaccount.com",
+  "client_id": "100425912263579597186",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/jeffreyzhou%40openalex-bigquery.iam.gserviceaccount.com"
+}
